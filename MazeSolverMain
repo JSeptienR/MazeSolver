@@ -1,0 +1,122 @@
+/*********************************************************************
+ * Maze Solver - Left-Hand Rule Solution using PIC18 
+ ********************************************************************/
+#include <p18cxxx.h>
+#include <delays.h>
+
+#define LED_1              LATCbits.LATC0
+#define LED_2              LATCbits.LATC1
+
+
+// trogdor version 2
+#define    LmotorForw    PORTDbits.RD5    // pin_c0  -- Left motor forward
+#define    RmotorForw    PORTDbits.RD4    // pin_c5  -- Right motor forward
+#define    enableLmotor  PORTAbits.RA4    // pin_c1  -- Enable Left motor
+#define    enableRmotor  PORTAbits.RA2    // pin_c2  -- Enable Right motor
+
+
+
+// Define logic to make the program easier to understand
+#define yes       0b1        
+#define no        0b0   
+
+//Counter declaration
+char count;
+void stepBack(void);
+
+#define    LeftIR  !PORTDbits.RD7   // input -- Left IR
+#define    RightIR !PORTDbits.RD6   // input -- Right IR
+
+//#define    EdgeLeft      0b00011101    // Pin RA0-AN0 analog input EdgeLeft (left line sensor)
+//#define    EdgeRight     0b00001101    // Pin RA5-AN4 analog input EdgeRight (right line sensor)
+#define    EdgeCntRight  0b00010001    // Pin RA3-AN3 analog input EdgeCntRight (center right line sensor)
+void main(void)
+{	// Default all pins to analog
+    //ADCON1 = 0b00000000;   //all analog to that AD7 can be used
+	ADCON2 = 0b00110010;   //Left Just - 16Tosc - Fosc/32
+	//TRISAbits.TRISA3  = 1;    // "0" is output "1" is input
+
+	// Default all pins to digital
+    ADCON1 |= 0x0F;
+
+	TRISDbits.TRISD5 = 0;
+	TRISDbits.TRISD4 = 0;
+	TRISAbits.TRISA4 = 0;
+	TRISAbits.TRISA2 = 0;
+
+    enableRmotor = no;
+    enableLmotor = no;
+    RmotorForw = yes;
+    LmotorForw = yes;
+
+	enableRmotor = yes;
+    enableLmotor = yes;
+	
+
+	//Main loop; follows left hand rule for solving the maze.
+	while(1)
+    {
+		//Variable declaration used in ADC
+		unsigned char i;
+		unsigned char analog;
+		
+		count = 0;
+		
+		//Moves away from the wall in the case that only left IR sensor is active. 
+		//If counter is exceded, robot is stuck; move back.
+		while(LeftIR == yes&& RightIR == no) { 
+			enableRmotor = yes;
+			enableLmotor = no;
+			Delay10KTCYx(120);
+			count++;
+			if(count > 8)	
+				stepBack();
+		}
+		
+		//Both sensors on means wall straight ahead or death end; move back and turn.
+		if (LeftIR == yes && RightIR == yes) {
+			stepBack();
+		}
+		
+		//Main left hand rule movement. Move slightly to the left until sensing wall.
+		enableRmotor = no;
+   		enableLmotor = yes;	 				
+		
+		//ADC algorithm; check edge center censor for black square in floor. If black, stop motors.
+		ADCON0 = EdgeCntRight;      		// Channel select and sets ADON = on
+    	i=0;
+    	while( i<=15 ) i++;    		// delay 20 usec
+	    ADCON0bits.GO = 1;          		// adcon0_go = high -- Start Conversion
+	    while( ADCON0bits.GO == 1 );    	// while adcon0_go loop end loop -- wait for A/D completion
+	    analog = ADRESH;
+	    if (analog > 150){ 
+	    	while(1){
+				enableRmotor = no;
+   				enableLmotor = no;	
+			}
+		}
+	    
+	    ADCON0bits.GO = 0;           		// adcon0_go = low -- Stop the ADC 
+
+    }
+} 
+
+/**
+ * This function serves as a stepback routine that enables the robot to move
+ * back in the case of getting stuck or entering a closed path.
+ */
+void stepBack(void){
+		enableRmotor = no;
+    	enableLmotor = no;
+		RmotorForw = no;
+    	LmotorForw = no;
+		enableRmotor = yes;
+    	enableLmotor = yes;
+		Delay10KTCYx(80);
+		enableRmotor = no;
+		Delay10KTCYx(500);
+		enableRmotor = yes;
+		RmotorForw = yes;
+    	LmotorForw = yes;
+	return;
+}
